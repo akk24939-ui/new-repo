@@ -32,6 +32,198 @@ const sugarColor = s => {
     return 'text-emerald-400';
 };
 
+// ── Module 5: Medication Reminder & Adherence ─────────────
+function MedicationReminder({ patientId, token }) {
+    const [reminders, setReminders] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [editTime, setEditTime] = useState({}); // { [id]: "HH:MM" }
+    const [alerted, setAlerted] = useState({}); // prevent repeat alerts
+
+    const load = () => {
+        API.get(`/meds/reminders/registered/${patientId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        }).then(res => { setReminders(res.data); setLoading(false); })
+            .catch(() => setLoading(false));
+    };
+
+    // ── Alarm engine: check every 30s ─────────────────────
+    useEffect(() => {
+        load();
+        const interval = setInterval(() => {
+            const now = new Date();
+            const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            setReminders(prev => {
+                prev.forEach(r => {
+                    if (r.reminder_time && r.reminder_time === hhmm && !alerted[r.id]) {
+                        // Toast alarm
+                        toast(`⏰ Time to take ${r.medicine_name}!`, {
+                            icon: '💊',
+                            duration: 10000,
+                            style: { background: '#5b21b6', color: '#fff', fontWeight: 'bold' }
+                        });
+                        // Browser notification
+                        if (Notification.permission === 'granted') {
+                            new Notification(`💊 VitaSage AI Reminder`, {
+                                body: `Time to take ${r.medicine_name}`,
+                                icon: '/favicon.ico',
+                            });
+                        } else if (Notification.permission !== 'denied') {
+                            Notification.requestPermission().then(p => {
+                                if (p === 'granted') new Notification(`💊 VitaSage AI`, { body: `Time to take ${r.medicine_name}` });
+                            });
+                        }
+                        setAlerted(a => ({ ...a, [r.id]: hhmm }));
+                    }
+                });
+                return prev;
+            });
+        }, 30000);
+        return () => clearInterval(interval);
+    }, [patientId, token]);
+
+    const updateTime = async (id) => {
+        const t = editTime[id];
+        if (!t) return;
+        try {
+            await API.put(`/meds/reminder/${id}/time`, { reminder_time: t }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success('Alarm time updated 🔔');
+            load();
+        } catch { toast.error('Could not update time'); }
+    };
+
+    const markTaken = async (r) => {
+        try {
+            const res = await API.post(`/meds/taken/${r.id}`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success(res.data.message, { icon: '✅', duration: 5000 });
+            if (res.data.remaining_stock === 0) {
+                toast.error('🚨 Out of Stock! Consult your doctor or pharmacy.', { duration: 8000 });
+            } else if (res.data.remaining_stock <= 2) {
+                toast(`⚠️ Low Stock: Only ${res.data.remaining_stock} tablet(s) left — refill soon!`, {
+                    icon: '⚠️', duration: 8000, style: { background: '#92400e', color: '#fff' }
+                });
+            }
+            load();
+        } catch { toast.error('Could not mark as taken'); }
+    };
+
+    const stockColor = (rem, total) => {
+        if (!total) return 'bg-white/20';
+        const pct = rem / total;
+        if (pct <= 0) return 'bg-red-500';
+        if (pct <= 0.25) return 'bg-orange-500';
+        if (pct <= 0.5) return 'bg-yellow-400';
+        return 'bg-emerald-500';
+    };
+
+    if (loading) return (
+        <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-6 md:col-span-2">
+            <div className="text-white/30 text-sm text-center">Loading reminders...</div>
+        </div>
+    );
+
+    return (
+        <div className="backdrop-blur-xl bg-white/10 border border-indigo-500/20 rounded-3xl p-6 md:col-span-2">
+            <div className="flex items-center justify-between mb-5">
+                <h3 className="text-white font-bold text-base flex items-center gap-2">
+                    ⏰ Medication Reminders & Stock
+                    <span className="text-xs font-normal text-indigo-300/60 px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20">Smart Alarm</span>
+                </h3>
+                <span className="text-white/30 text-xs">{reminders.length} medicine{reminders.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            {reminders.length === 0 ? (
+                <div className="text-center py-8">
+                    <div className="text-4xl mb-3">⏰</div>
+                    <p className="text-white/30 text-sm">No reminders set.</p>
+                    <p className="text-white/20 text-xs mt-1">Reminders are created by your doctor from your prescriptions.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {reminders.map(r => {
+                        const stockPct = r.total_stock ? Math.max(0, (r.remaining_stock / r.total_stock) * 100) : 0;
+                        const isOut = r.remaining_stock === 0;
+                        const isLow = r.remaining_stock > 0 && r.remaining_stock <= 2;
+                        const takenToday = r.today_status === 'taken';
+                        const totalDoses = (r.taken_count || 0) + (r.missed_count || 0);
+                        const adherencePct = totalDoses > 0 ? Math.round((r.taken_count / totalDoses) * 100) : 0;
+
+                        return (
+                            <div key={r.id} className={`rounded-2xl p-4 border ${isOut ? 'bg-red-500/8 border-red-500/20' : isLow ? 'bg-orange-500/8 border-orange-500/20' : 'bg-indigo-500/5 border-indigo-500/15'}`}>
+                                {/* Header */}
+                                <div className="flex items-start justify-between mb-3">
+                                    <div>
+                                        <p className="text-white font-bold text-sm">{r.medicine_name}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            {takenToday
+                                                ? <span className="text-xs text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/20">✅ Taken Today</span>
+                                                : <span className="text-xs text-indigo-300/60 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/15">⏳ Pending Today</span>
+                                            }
+                                            {isOut && <span className="text-xs text-red-400 bg-red-500/15 px-2 py-0.5 rounded-full border border-red-500/20">🚨 Out of Stock</span>}
+                                            {isLow && <span className="text-xs text-orange-400 bg-orange-500/15 px-2 py-0.5 rounded-full border border-orange-500/20">⚠️ Low Stock</span>}
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-white/20 text-xs">Adherence</p>
+                                        <p className={`text-sm font-black ${adherencePct >= 80 ? 'text-emerald-400' : adherencePct >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                            {totalDoses > 0 ? `${adherencePct}%` : '—'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Stock progress bar */}
+                                <div className="mb-3">
+                                    <div className="flex justify-between text-xs text-white/30 mb-1">
+                                        <span>Stock</span>
+                                        <span>{r.remaining_stock} / {r.total_stock} tablets</span>
+                                    </div>
+                                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full transition-all duration-500 ${stockColor(r.remaining_stock, r.total_stock)}`}
+                                            style={{ width: `${stockPct}%` }} />
+                                    </div>
+                                </div>
+
+                                {/* Alarm time setter */}
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="text-white/40 text-xs">🔔 Alarm</span>
+                                    <input
+                                        type="time"
+                                        defaultValue={r.reminder_time || ''}
+                                        onChange={e => setEditTime(t => ({ ...t, [r.id]: e.target.value }))}
+                                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-indigo-500/50"
+                                    />
+                                    <button onClick={() => updateTime(r.id)}
+                                        className="px-3 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold transition-all">
+                                        Set
+                                    </button>
+                                </div>
+
+                                {/* Taken button */}
+                                <button onClick={() => markTaken(r)} disabled={takenToday || isOut}
+                                    className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${takenToday ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default' :
+                                        isOut ? 'bg-white/5 border border-white/10 text-white/20 cursor-not-allowed' :
+                                            'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/20'
+                                        }`}>
+                                    {takenToday ? '✅ Already Taken Today' : isOut ? '🚨 Out of Stock' : '✅ Mark as Taken'}
+                                </button>
+
+                                {/* Tiny stats */}
+                                <div className="flex gap-3 mt-2 justify-center">
+                                    <span className="text-white/20 text-xs">✅ {r.taken_count || 0} taken</span>
+                                    <span className="text-white/20 text-xs">❌ {r.missed_count || 0} missed</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ── Advanced Prescription View (Module 4A) ───────────────
 function AdvancedPrescriptionView({ patientId, token }) {
     const [prescriptions, setPrescriptions] = useState([]);
@@ -525,6 +717,9 @@ export default function PatientDashboard() {
 
                     {/* ── UMAVS Medical History Timeline ─ */}
                     {token && <MedicalTimeline patientId={patient.id} token={token} />}
+
+                    {/* ── Module 5: Medication Reminders ─ */}
+                    {token && <MedicationReminder patientId={patient.id} token={token} />}
 
                     {/* ── Module 4A: Advanced Prescriptions ─ */}
                     {token && <AdvancedPrescriptionView patientId={patient.id} token={token} />}

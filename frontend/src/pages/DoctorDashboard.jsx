@@ -709,6 +709,128 @@ function AdvancedPrescriptionForm({ patient }) {
     );
 }
 
+// ── Module 5: Doctor Adherence Monitor ──────────────────
+function AdherenceMonitor({ patient }) {
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [expandedId, setExpandedId] = useState(null);
+
+    const src = patient.patient_source || 'registered';
+
+    useEffect(() => {
+        api.get(`/meds/adherence/${src}/${patient.id}`)
+            .then(res => { setData(res.data); setLoading(false); })
+            .catch(() => setLoading(false));
+    }, [patient.id, src]);
+
+    if (loading) return (
+        <div className="glass-card rounded-3xl p-6">
+            <div className="text-white/30 text-sm text-center">Loading adherence data...</div>
+        </div>
+    );
+
+    const overall = data.length > 0
+        ? Math.round(data.reduce((s, r) => s + (r.adherence_pct || 0), 0) / data.length)
+        : null;
+
+    const adherenceColor = pct => pct >= 80 ? 'text-emerald-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400';
+    const adherenceBg = pct => pct >= 80 ? 'from-emerald-600/20 to-teal-600/20 border-emerald-500/20'
+        : pct >= 50 ? 'from-yellow-600/20 to-orange-600/20 border-yellow-500/20'
+            : 'from-red-600/20 to-rose-600/20 border-red-500/20';
+
+    return (
+        <div className="glass-card rounded-3xl p-6">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-white font-bold text-sm flex items-center gap-2">
+                    📊 Medication Adherence Monitor
+                </h3>
+                {overall !== null && (
+                    <span className={`text-lg font-black ${adherenceColor(overall)}`}>
+                        {overall}% overall
+                    </span>
+                )}
+            </div>
+
+            {data.length === 0 ? (
+                <div className="text-center py-8">
+                    <div className="text-3xl mb-2">📊</div>
+                    <p className="text-white/30 text-xs">No medication reminders set for this patient yet.</p>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {data.map(r => {
+                        const pct = r.adherence_pct || 0;
+                        const isOpen = expandedId === r.reminder_id;
+                        const history = r.log_history || [];
+                        return (
+                            <div key={r.reminder_id} className={`rounded-2xl border bg-gradient-to-r ${adherenceBg(pct)} overflow-hidden`}>
+                                {/* Medicine header — click to expand logs */}
+                                <button onClick={() => setExpandedId(isOpen ? null : r.reminder_id)}
+                                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-all">
+                                    <div className="text-left">
+                                        <p className="text-white text-sm font-bold">{r.medicine_name}</p>
+                                        <p className="text-white/30 text-xs mt-0.5">
+                                            ✅ {r.taken_count} taken · ❌ {r.missed_count} missed · {r.remaining_stock}/{r.total_stock} stock
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        {/* Adherence ring */}
+                                        <div className="relative w-12 h-12">
+                                            <svg className="w-12 h-12 -rotate-90" viewBox="0 0 44 44">
+                                                <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
+                                                <circle cx="22" cy="22" r="18" fill="none"
+                                                    stroke={pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444'}
+                                                    strokeWidth="4"
+                                                    strokeDasharray={`${pct * 1.131} 113.1`}
+                                                    strokeLinecap="round" />
+                                            </svg>
+                                            <span className={`absolute inset-0 flex items-center justify-center text-xs font-black ${adherenceColor(pct)}`}>
+                                                {pct}%
+                                            </span>
+                                        </div>
+                                        <span className="text-white/30 text-sm">{isOpen ? '▲' : '▼'}</span>
+                                    </div>
+                                </button>
+
+                                {/* Log history */}
+                                {isOpen && (
+                                    <div className="px-4 pb-4 border-t border-white/10">
+                                        <p className="text-white/30 text-xs uppercase tracking-wide my-3">Dose Log History</p>
+                                        {history.length === 0 ? (
+                                            <p className="text-white/20 text-xs text-center py-2">No logs yet</p>
+                                        ) : (
+                                            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                                {history.map((log, i) => (
+                                                    <div key={i} className="flex items-center justify-between bg-white/5 rounded-xl px-3 py-2">
+                                                        <span className="text-white/60 text-xs">
+                                                            {new Date(log.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                        </span>
+                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${log.status === 'taken'
+                                                            ? 'bg-emerald-500/20 text-emerald-400'
+                                                            : 'bg-red-500/20 text-red-400'
+                                                            }`}>
+                                                            {log.status === 'taken' ? '✅ Taken' : '❌ Missed'}
+                                                        </span>
+                                                        {log.taken_at && (
+                                                            <span className="text-white/20 text-xs">
+                                                                {new Date(log.taken_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ── UMAVS Doctor Medical Record ──────────────────────────
 function DoctorMedicalRecord({ patient }) {
     const CATS = ['Lab Report', 'Prescription', 'Radiology', 'Emergency'];
@@ -894,6 +1016,11 @@ export default function DoctorDashboard() {
 
                     {/* ── Module 4A: Advanced Prescription Form ── */}
                     <AdvancedPrescriptionForm patient={patient} />
+
+                    {/* ── Module 5: Adherence Monitor (full width) ── */}
+                    <div className="mx-8 mb-6">
+                        <AdherenceMonitor patient={patient} />
+                    </div>
 
                     {/* ── CMMS Collaborative Timeline (full width, below grid) ── */}
                     <CollaborativeTimeline patient={patient} />
