@@ -6,7 +6,7 @@ from typing import Optional, List
 from datetime import datetime
 
 from app.database import get_db
-from app.dependencies import require_doctor
+from app.dependencies import require_doctor, require_staff
 from app.models import RegisteredPatient
 
 router = APIRouter(prefix="/patient-records", tags=["Patient-Doctor Integration"])
@@ -39,7 +39,7 @@ class DiagnosisOut(BaseModel):
 @router.get("/search")
 async def search_any_patient(
     query: str,
-    current_user=Depends(require_doctor),
+    current_user=Depends(require_staff),   # staff can search patients
     db: AsyncSession = Depends(get_db),
 ):
     """Search registered_patients AND patient_master by ABHA or Aadhaar."""
