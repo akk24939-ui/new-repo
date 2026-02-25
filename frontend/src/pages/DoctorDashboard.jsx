@@ -587,6 +587,128 @@ function CollaborativeTimeline({ patient, readOnly = false }) {
     );
 }
 
+// ── Module 4A: Advanced Prescription Form ────────────────
+const FREQ_OPTIONS = ['Once Daily', 'Twice Daily', 'Thrice Daily', 'Every 4 hours', 'Every 6 hours', 'Every 8 hours', 'As needed (SOS)', 'Bedtime'];
+const EMPTY_MED = { medicine_name: '', dosage: '', frequency: 'Twice Daily', duration: '', instructions: '' };
+
+function AdvancedPrescriptionForm({ patient }) {
+    const [medicines, setMedicines] = useState([{ ...EMPTY_MED }]);
+    const [diagnosis, setDiagnosis] = useState('');
+    const [advice, setAdvice] = useState('');
+    const [followUp, setFollowUp] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [lastRx, setLastRx] = useState(null);
+
+    const updateMed = (i, key, val) =>
+        setMedicines(prev => prev.map((m, idx) => idx === i ? { ...m, [key]: val } : m));
+    const addMed = () => setMedicines(prev => [...prev, { ...EMPTY_MED }]);
+    const removeMed = i => setMedicines(prev => prev.filter((_, idx) => idx !== i));
+
+    const submit = async () => {
+        if (!diagnosis.trim()) return toast.error('Diagnosis is required');
+        if (medicines.some(m => !m.medicine_name.trim() || !m.dosage.trim() || !m.duration.trim()))
+            return toast.error('Fill medicine name, dosage, and duration for all medicines');
+        setSaving(true);
+        try {
+            const res = await api.post('/rx/create', {
+                patient_id: patient.id,
+                patient_source: patient.source,
+                diagnosis,
+                medicines,
+                advice: advice || null,
+                follow_up_date: followUp || null,
+            });
+            setLastRx(res.data);
+            setMedicines([{ ...EMPTY_MED }]);
+            setDiagnosis(''); setAdvice(''); setFollowUp('');
+            toast.success(`✅ Prescription ${res.data.rx_number} generated!`);
+        } catch (e) {
+            toast.error(e?.response?.data?.detail || 'Failed to save prescription');
+        } finally { setSaving(false); }
+    };
+
+    return (
+        <div className="mx-8 mb-6">
+            <div className="glass-card rounded-2xl p-6 border border-purple-500/15">
+                <div className="flex items-center gap-3 mb-5">
+                    <div className="w-9 h-9 rounded-xl bg-purple-500/20 flex items-center justify-center text-lg">💊</div>
+                    <div>
+                        <h3 className="text-white font-bold text-base">Advanced Prescription</h3>
+                        <p className="text-white/30 text-xs">Immutable digital prescription — locked after saving</p>
+                    </div>
+                    {lastRx && (
+                        <div className="ml-auto text-right">
+                            <p className="text-purple-300 text-xs font-mono font-bold">{lastRx.rx_number}</p>
+                            <p className="text-white/20 text-xs">{lastRx.digital_signature}</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Diagnosis */}
+                <div className="mb-4">
+                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wide block mb-1.5">📋 Diagnosis *</label>
+                    <textarea value={diagnosis} onChange={e => setDiagnosis(e.target.value)} rows={2}
+                        placeholder="e.g. Viral Fever — Acute with mild dehydration"
+                        className="glass-input w-full resize-none text-sm" />
+                </div>
+
+                {/* Medicines */}
+                <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="text-white/40 text-xs font-semibold uppercase tracking-wide">💊 Medicines *</label>
+                        <button onClick={addMed} className="text-xs px-3 py-1 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/25 transition-all">+ Add Medicine</button>
+                    </div>
+                    <div className="space-y-3">
+                        {medicines.map((med, i) => (
+                            <div key={i} className="bg-white/5 rounded-2xl p-4 border border-white/5 relative">
+                                {medicines.length > 1 && (
+                                    <button onClick={() => removeMed(i)} className="absolute top-3 right-3 text-red-400/50 hover:text-red-400 text-xs transition-all">✕</button>
+                                )}
+                                <p className="text-purple-300/50 text-xs font-semibold mb-2">Medicine {i + 1}</p>
+                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                    <input placeholder="Medicine Name *" value={med.medicine_name} onChange={e => updateMed(i, 'medicine_name', e.target.value)}
+                                        className="glass-input text-sm col-span-2" />
+                                    <input placeholder="Dosage (e.g. 1 Tablet)" value={med.dosage} onChange={e => updateMed(i, 'dosage', e.target.value)}
+                                        className="glass-input text-sm" />
+                                    <select value={med.frequency} onChange={e => updateMed(i, 'frequency', e.target.value)}
+                                        className="glass-input text-sm bg-transparent">
+                                        {FREQ_OPTIONS.map(f => <option key={f} value={f} className="bg-gray-900">{f}</option>)}
+                                    </select>
+                                    <input placeholder="Duration (e.g. 5 Days)" value={med.duration} onChange={e => updateMed(i, 'duration', e.target.value)}
+                                        className="glass-input text-sm" />
+                                    <input placeholder="Instructions (e.g. After Food)" value={med.instructions} onChange={e => updateMed(i, 'instructions', e.target.value)}
+                                        className="glass-input text-sm" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Advice + Follow-up */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <div>
+                        <label className="text-white/40 text-xs font-semibold uppercase tracking-wide block mb-1.5">🗒️ Advice</label>
+                        <textarea value={advice} onChange={e => setAdvice(e.target.value)} rows={2}
+                            placeholder="Rest & drink plenty of fluids..."
+                            className="glass-input w-full resize-none text-sm" />
+                    </div>
+                    <div>
+                        <label className="text-white/40 text-xs font-semibold uppercase tracking-wide block mb-1.5">📅 Follow-up Date</label>
+                        <input type="date" value={followUp} onChange={e => setFollowUp(e.target.value)}
+                            className="glass-input w-full text-sm" />
+                        <p className="text-white/20 text-xs mt-1.5">🔒 Once saved, prescription cannot be edited (legal integrity)</p>
+                    </div>
+                </div>
+
+                <button onClick={submit} disabled={saving}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {saving ? '⏳ Generating...' : '💊 Generate Prescription'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ── UMAVS Doctor Medical Record ──────────────────────────
 function DoctorMedicalRecord({ patient }) {
     const CATS = ['Lab Report', 'Prescription', 'Radiology', 'Emergency'];
@@ -769,6 +891,9 @@ export default function DoctorDashboard() {
                             </div>
                         )}
                     </div>
+
+                    {/* ── Module 4A: Advanced Prescription Form ── */}
+                    <AdvancedPrescriptionForm patient={patient} />
 
                     {/* ── CMMS Collaborative Timeline (full width, below grid) ── */}
                     <CollaborativeTimeline patient={patient} />

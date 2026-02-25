@@ -254,6 +254,108 @@ function VitalsSection({ patientId }) {
     );
 }
 
+// ── Module 4B: Structured Lab Report Form (Staff Only) ───
+const LAB_TESTS = {
+    'CBC (Full Blood Count)': [['hemoglobin', 'Hemoglobin (g/dL)'], ['wbc', 'WBC (/mcL)'], ['platelets', 'Platelets (/mcL)']],
+    'Blood Sugar': [['sugar_fasting', 'Sugar Fasting (mg/dL)'], ['blood_pressure', 'Blood Pressure (mmHg)']],
+    'Kidney Function': [['creatinine', 'Creatinine (mg/dL)'], ['uric_acid', 'Uric Acid (mg/dL)']],
+    'Lipid Profile': [['cholesterol', 'Cholesterol (mg/dL)']],
+    'Thyroid': [['thyroid_tsh', 'Thyroid TSH (mIU/L)']],
+    'Vitamin Panel': [['vitamin_d', 'Vitamin D (ng/mL)']],
+    'Full Panel (All Fields)': [['hemoglobin', 'Hemoglobin (g/dL)'], ['wbc', 'WBC (/mcL)'], ['platelets', 'Platelets (/mcL)'], ['sugar_fasting', 'Sugar Fasting (mg/dL)'], ['blood_pressure', 'BP (mmHg)'], ['creatinine', 'Creatinine (mg/dL)'], ['uric_acid', 'Uric Acid (mg/dL)'], ['cholesterol', 'Cholesterol (mg/dL)'], ['thyroid_tsh', 'TSH (mIU/L)'], ['vitamin_d', 'Vitamin D (ng/mL)']],
+};
+
+function LabReportForm({ patient }) {
+    const [testName, setTestName] = useState('CBC (Full Blood Count)');
+    const [values, setValues] = useState({});
+    const [remarks, setRemarks] = useState('');
+    const [file, setFile] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    const fields = LAB_TESTS[testName] || [];
+
+    const upload = async () => {
+        const hasValues = Object.values(values).some(v => v.trim());
+        if (!hasValues && !file) return toast.error('Enter at least one test value or upload a file');
+        setSaving(true);
+        try {
+            const fd = new FormData();
+            fd.append('patient_id', patient.id);
+            fd.append('patient_source', patient.source);
+            fd.append('test_name', testName);
+            Object.entries(values).forEach(([k, v]) => { if (v.trim()) fd.append(k, v); });
+            if (remarks) fd.append('remarks', remarks);
+            if (file) fd.append('file', file);
+            await api.post('/lab/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+            toast.success(`✅ Lab report uploaded: ${testName}`);
+            setValues({}); setRemarks(''); setFile(null);
+        } catch (e) {
+            toast.error(e?.response?.data?.detail || 'Upload failed');
+        } finally { setSaving(false); }
+    };
+
+    return (
+        <div className="mx-8 mb-6">
+            <div className="glass-card rounded-2xl p-6 border border-teal-500/15">
+                <div className="flex items-center gap-3 mb-5">
+                    <div className="w-9 h-9 rounded-xl bg-teal-500/20 flex items-center justify-center text-lg">🧪</div>
+                    <div>
+                        <h3 className="text-white font-bold text-base">Structured Lab Report</h3>
+                        <p className="text-white/30 text-xs">JSONB structured diagnostic data — linked to patient</p>
+                    </div>
+                </div>
+
+                {/* Test selector */}
+                <div className="mb-4">
+                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wide block mb-1.5">🧫 Test Name *</label>
+                    <select value={testName} onChange={e => { setTestName(e.target.value); setValues({}); }}
+                        className="glass-input w-full text-sm bg-transparent">
+                        {Object.keys(LAB_TESTS).map(t => <option key={t} value={t} className="bg-gray-900">{t}</option>)}
+                    </select>
+                </div>
+
+                {/* Dynamic test fields */}
+                <div className="mb-4">
+                    <label className="text-white/40 text-xs font-semibold uppercase tracking-wide block mb-2">📊 Test Results</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        {fields.map(([key, label]) => (
+                            <div key={key}>
+                                <p className="text-white/30 text-xs mb-1">{label}</p>
+                                <input type="text" placeholder={`Enter ${label.split(' ')[0]}`}
+                                    value={values[key] || ''}
+                                    onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
+                                    className="glass-input text-sm w-full" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Remarks + File */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <div>
+                        <label className="text-white/40 text-xs font-semibold uppercase tracking-wide block mb-1.5">💬 Remarks</label>
+                        <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={2}
+                            placeholder="e.g. Haemoglobin slightly low — retest after 2 weeks"
+                            className="glass-input w-full resize-none text-sm" />
+                    </div>
+                    <div>
+                        <label className="text-white/40 text-xs font-semibold uppercase tracking-wide block mb-1.5">📎 Attach Report PDF</label>
+                        <input type="file" accept=".pdf,.png,.jpg,.jpeg"
+                            onChange={e => setFile(e.target.files[0])}
+                            className="glass-input w-full text-sm text-white/50 file:bg-teal-500/20 file:text-teal-300 file:border-0 file:rounded-lg file:px-3 file:py-1 file:text-xs cursor-pointer" />
+                        {file && <p className="text-teal-400/60 text-xs mt-1.5">📎 {file.name}</p>}
+                    </div>
+                </div>
+
+                <button onClick={upload} disabled={saving}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-sm transition-all disabled:opacity-50">
+                    {saving ? '⏳ Uploading...' : '🧪 Submit Lab Report'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ── CMMS: Staff View - Collaborative Timeline (View Only) ──
 function StaffCollaborativeTimeline({ patient }) {
     const [records, setRecords] = useState([]);
@@ -446,6 +548,8 @@ export default function StaffDashboard() {
                         {/* Legacy vitals for master patients */}
                         {isMaster && <VitalsSection patientId={patient.id} />}
                     </div>
+                    {/* Module 4B: Structured Lab Report */}
+                    <LabReportForm patient={patient} />
                     {/* CMMS: Staff sees ALL records (doctor + other staff) in view-only timeline */}
                     <StaffCollaborativeTimeline patient={patient} />
                 </>
