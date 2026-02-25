@@ -928,10 +928,17 @@ function DoctorMedicalRecord({ patient }) {
 // ── Main Doctor Dashboard ─────────────────────────────────
 export default function DoctorDashboard() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [query, setQuery] = useState('');
     const [patient, setPatient] = useState(null);
     const [searching, setSearching] = useState(false);
     const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    // Derive a doctor object immediately from localStorage as fallback
+    const cachedUser = (() => {
+        try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
+    })();
+    const doctor = user || cachedUser;
 
     const searchPatient = async () => {
         if (query.length !== 12 || !/^\d{12}$/.test(query))
@@ -955,7 +962,7 @@ export default function DoctorDashboard() {
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950">
             <Toaster position="top-right" toastOptions={{ style: { background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' } }} />
 
-            <Header doctor={user} today={today} />
+            <Header doctor={doctor} today={today} />
 
             {/* Search */}
             <div className="mx-8 mt-6">
@@ -988,42 +995,8 @@ export default function DoctorDashboard() {
                     {isMaster && patient.risk_level === 'High' && <EmergencyBanner patientName={patient.name} />}
                     <PatientCard patient={patient} />
 
-                    <div className="mx-8 mt-6 mb-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* ── UMAVS Unified Record (all patients, all fields for doctor) */}
-                        <DoctorMedicalRecord patient={patient} />
-
-                        {/* ── Diagnosis Report (always shown) */}
-                        <DiagnosisSection patient={patient} />
-
-                        {/* ── Extended sections only for doctor-managed patients */}
-                        {isMaster && (
-                            <>
-                                <SuggestionSection patientId={patient.id} />
-                                <PrescriptionSection patientId={patient.id} />
-                                <ReportSection patientId={patient.id} />
-                            </>
-                        )}
-
-                        {/* ── Portal patient — RBAC notice */}
-                        {isRegistered && (
-                            <div className="glass-card rounded-2xl p-5 flex flex-col items-center justify-center gap-3 border-dashed border-white/10">
-                                <div className="text-3xl">🔒</div>
-                                <p className="text-white font-semibold text-sm text-center">Suggestions & Prescriptions</p>
-                                <p className="text-white/30 text-xs text-center">These modules are available for patients in the hospital management system. Diagnosis reports are available above for all patients.</p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* ── Module 4A: Advanced Prescription Form ── */}
-                    <AdvancedPrescriptionForm patient={patient} />
-
-                    {/* ── Module 5: Adherence Monitor (full width) ── */}
-                    <div className="mx-8 mb-6">
-                        <AdherenceMonitor patient={patient} />
-                    </div>
-
-                    {/* ── CMMS Collaborative Timeline (full width, below grid) ── */}
-                    <CollaborativeTimeline patient={patient} />
+                    {/* ── Tab nav ──────────────────────────── */}
+                    <PatientTabs patient={patient} isMaster={isMaster} />
                 </>
             )}
 
@@ -1051,3 +1024,77 @@ export default function DoctorDashboard() {
         </div>
     );
 }
+
+// ── Tabbed Patient Sections (lazy — only active tab mounts) ──
+const TABS = [
+    { id: 'diagnose', label: '🩺 Diagnose', always: true },
+    { id: 'records', label: '📋 Record', always: true },
+    { id: 'rx', label: '💊 Prescribe', always: true },
+    { id: 'adherence', label: '📊 Adherence', always: true },
+    { id: 'timeline', label: '🕐 Timeline', always: true },
+];
+
+function PatientTabs({ patient, isMaster }) {
+    const [activeTab, setActiveTab] = useState('diagnose');
+    const isRegistered = patient?.source === 'registered';
+
+    return (
+        <div className="mx-8 mt-6 mb-4">
+            {/* Tab bar */}
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+                {TABS.map(tab => (
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${activeTab === tab.id
+                                ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-500/20'
+                                : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70'
+                            }`}>
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Tab panels — only active mounts */}
+            <div className="grid grid-cols-1 gap-6">
+                {activeTab === 'diagnose' && <DiagnosisSection patient={patient} />}
+
+                {activeTab === 'records' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <DoctorMedicalRecord patient={patient} />
+                        {isMaster && (
+                            <>
+                                <SuggestionSection patientId={patient.id} />
+                                <ReportSection patientId={patient.id} />
+                            </>
+                        )}
+                        {!isMaster && (
+                            <div className="glass-card rounded-2xl p-5 flex flex-col items-center justify-center gap-3 border-dashed border-white/10">
+                                <div className="text-3xl">🔒</div>
+                                <p className="text-white font-semibold text-sm text-center">Hospital Records</p>
+                                <p className="text-white/30 text-xs text-center">Extended records are for hospital-managed patients only.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'rx' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <AdvancedPrescriptionForm patient={patient} />
+                        {isMaster && <PrescriptionSection patientId={patient.id} />}
+                        {isRegistered && (
+                            <div className="glass-card rounded-2xl p-5 flex flex-col items-center justify-center gap-3">
+                                <div className="text-3xl">✅</div>
+                                <p className="text-white font-semibold text-sm text-center">Advanced Prescription sent to patient portal</p>
+                                <p className="text-white/30 text-xs text-center">Patient can view & print their prescription from the patient dashboard.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'adherence' && <AdherenceMonitor patient={patient} />}
+
+                {activeTab === 'timeline' && <CollaborativeTimeline patient={patient} />}
+            </div>
+        </div>
+    );
+}
+
