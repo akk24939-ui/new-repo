@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
+import DrAIButton from '../components/DrAIButton';
 
 const API = axios.create({ baseURL: 'http://localhost:8000' });
 
@@ -30,6 +31,177 @@ const sugarColor = s => {
     if (val > 140) return 'text-yellow-400';
     return 'text-emerald-400';
 };
+
+// ── Advanced Prescription View (Module 4A) ───────────────
+function AdvancedPrescriptionView({ patientId, token }) {
+    const [prescriptions, setPrescriptions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [expanded, setExpanded] = useState(null); // open rx id
+
+    useEffect(() => {
+        API.get(`/rx/patient/registered/${patientId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        }).then(res => { setPrescriptions(res.data); setLoading(false); })
+            .catch(() => setLoading(false));
+    }, [patientId, token]);
+
+    const printRx = (rx) => {
+        const win = window.open('', '_blank');
+        const meds = Array.isArray(rx.medicines) ? rx.medicines : [];
+        win.document.write(`
+            <html><head><title>Prescription ${rx.rx_number}</title>
+            <style>
+                body{font-family:Arial,sans-serif;padding:40px;max-width:800px;margin:auto}
+                h1{color:#1a1a2e;font-size:22px;border-bottom:2px solid #0d9488;padding-bottom:10px}
+                .badge{background:#7c3aed;color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:bold}
+                table{width:100%;border-collapse:collapse;margin-top:16px}
+                th{background:#f0f9ff;padding:8px;text-align:left;font-size:12px;color:#475569}
+                td{padding:8px;border-bottom:1px solid #e2e8f0;font-size:13px}
+                .section{margin-top:18px}
+                .label{font-size:11px;color:#64748b;font-weight:bold;text-transform:uppercase}
+                .sig{margin-top:40px;border-top:1px solid #e2e8f0;padding-top:16px;font-size:12px;color:#64748b}
+                @media print { .no-print{display:none} }
+            </style></head><body>
+            <h1>🏥 VitaSage AI — Prescription</h1>
+            <p><span class='badge'>${rx.rx_number || 'N/A'}</span>
+               &nbsp;<strong>Doctor:</strong> ${rx.digital_signature || rx.doctor_name || 'Doctor'}
+               &nbsp;<strong>Date:</strong> ${new Date(rx.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+            <div class='section'><p class='label'>Diagnosis</p><p>${rx.diagnosis}</p></div>
+            <table>
+                <tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
+                ${meds.map(m => `<tr><td><b>${m.medicine_name}</b></td><td>${m.dosage}</td><td>${m.frequency}</td><td>${m.duration}</td><td>${m.instructions || '—'}</td></tr>`).join('')}
+            </table>
+            ${rx.advice ? `<div class='section'><p class='label'>Advice</p><p>${rx.advice}</p></div>` : ''}
+            ${rx.follow_up_date ? `<div class='section'><p class='label'>Follow-up</p><p>${rx.follow_up_date}</p></div>` : ''}
+            <div class='sig'>Digitally signed · ${rx.digital_signature || ''} · VitaSage AI EMR System</div>
+            <script>window.onload=()=>window.print()<\/script>
+            </body></html>`);
+        win.document.close();
+    };
+
+    if (loading) return (
+        <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-6 md:col-span-2">
+            <div className="text-white/30 text-sm text-center">Loading prescriptions...</div>
+        </div>
+    );
+
+    return (
+        <div className="backdrop-blur-xl bg-white/10 border border-purple-500/20 rounded-3xl p-6 md:col-span-2">
+            <div className="flex items-center justify-between mb-5">
+                <h3 className="text-white font-bold text-base flex items-center gap-2">
+                    💊 My Prescriptions
+                    <span className="text-xs font-normal text-purple-300/60 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20">View Only</span>
+                </h3>
+                <span className="text-white/30 text-xs">{prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            {prescriptions.length === 0 ? (
+                <div className="text-center py-10">
+                    <div className="text-4xl mb-3">💊</div>
+                    <p className="text-white/30 text-sm">No prescriptions yet.</p>
+                    <p className="text-white/20 text-xs mt-1">Prescriptions written by your doctor will appear here.</p>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {prescriptions.map((rx) => {
+                        const meds = Array.isArray(rx.medicines) ? rx.medicines : [];
+                        const isOpen = expanded === rx.id;
+                        return (
+                            <div key={rx.id} className="bg-purple-500/5 border border-purple-500/15 rounded-2xl overflow-hidden">
+                                {/* Collapsed header — click to expand */}
+                                <button onClick={() => setExpanded(isOpen ? null : rx.id)}
+                                    className="w-full flex items-center justify-between px-5 py-4 hover:bg-purple-500/10 transition-all">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono">
+                                            {rx.rx_number || 'RX'}
+                                        </span>
+                                        <div className="text-left">
+                                            <p className="text-white text-sm font-semibold">{rx.diagnosis}</p>
+                                            <p className="text-white/30 text-xs">
+                                                {rx.digital_signature || rx.doctor_name} · {new Date(rx.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-white/30 text-xs">{meds.length} medicine{meds.length !== 1 ? 's' : ''}</span>
+                                        <span className="text-white/30 text-sm">{isOpen ? '▲' : '▼'}</span>
+                                    </div>
+                                </button>
+
+                                {/* Expanded detail */}
+                                {isOpen && (
+                                    <div className="px-5 pb-5 border-t border-purple-500/10">
+                                        {/* Doctor badge */}
+                                        <div className="flex items-center gap-2 mt-4 mb-4">
+                                            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/20 font-semibold">
+                                                🩺 {rx.digital_signature || rx.doctor_name}
+                                            </span>
+                                            <span className="text-white/20 text-xs">
+                                                {new Date(rx.created_at).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                            </span>
+                                        </div>
+
+                                        {/* Diagnosis */}
+                                        <div className="mb-4 bg-white/5 rounded-xl px-4 py-3">
+                                            <p className="text-purple-300/60 text-xs mb-0.5">📋 Diagnosis</p>
+                                            <p className="text-white text-sm font-medium">{rx.diagnosis}</p>
+                                        </div>
+
+                                        {/* Medicines */}
+                                        <p className="text-white/40 text-xs font-semibold uppercase tracking-wide mb-2">💊 Medicines Prescribed</p>
+                                        <div className="space-y-2 mb-4">
+                                            {meds.map((m, idx) => (
+                                                <div key={idx} className="bg-white/5 rounded-xl px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-1">
+                                                    <div className="col-span-2 flex items-center gap-2 mb-1">
+                                                        <span className="w-5 h-5 rounded-full bg-purple-500/30 text-purple-300 text-xs font-bold flex items-center justify-center">{idx + 1}</span>
+                                                        <span className="text-white font-semibold text-sm">{m.medicine_name}</span>
+                                                    </div>
+                                                    <div><p className="text-white/30 text-xs">Dosage</p><p className="text-white/80 text-xs font-medium">{m.dosage}</p></div>
+                                                    <div><p className="text-white/30 text-xs">Frequency</p><p className="text-white/80 text-xs font-medium">{m.frequency}</p></div>
+                                                    <div><p className="text-white/30 text-xs">Duration</p><p className="text-white/80 text-xs font-medium">{m.duration}</p></div>
+                                                    {m.instructions && <div><p className="text-white/30 text-xs">Instructions</p><p className="text-emerald-400/80 text-xs font-medium">{m.instructions}</p></div>}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Advice */}
+                                        {rx.advice && (
+                                            <div className="mb-3 bg-amber-500/10 border border-amber-500/15 rounded-xl px-4 py-3">
+                                                <p className="text-amber-400/60 text-xs mb-0.5">🗒️ Doctor's Advice</p>
+                                                <p className="text-white/80 text-sm">{rx.advice}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Follow-up */}
+                                        {rx.follow_up_date && (
+                                            <div className="mb-4 bg-teal-500/10 border border-teal-500/15 rounded-xl px-4 py-2.5 flex items-center gap-2">
+                                                <span className="text-teal-400">📅</span>
+                                                <div>
+                                                    <p className="text-teal-400/60 text-xs">Follow-up Date</p>
+                                                    <p className="text-white text-sm font-semibold">{rx.follow_up_date}</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Download PDF */}
+                                        <button onClick={() => printRx(rx)}
+                                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs transition-all flex items-center justify-center gap-2">
+                                            📄 Download / Print Prescription PDF
+                                        </button>
+
+                                        {/* Lock notice */}
+                                        <p className="text-center text-white/15 text-xs mt-2">🔒 Immutable · Digitally signed · Cannot be modified</p>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
 
 // ── Medical History Timeline ──────────────────────────────
 function MedicalTimeline({ patientId, token }) {
@@ -353,12 +525,18 @@ export default function PatientDashboard() {
 
                     {/* ── UMAVS Medical History Timeline ─ */}
                     {token && <MedicalTimeline patientId={patient.id} token={token} />}
+
+                    {/* ── Module 4A: Advanced Prescriptions ─ */}
+                    {token && <AdvancedPrescriptionView patientId={patient.id} token={token} />}
                 </div>
 
                 <p className="text-center text-white/15 text-xs mt-10">
                     VitaSage AI Patient Portal · Records encrypted · ABHA-linked · NHA Compliant
                 </p>
             </div>
+
+            {/* ── Dr AI Floating Button ─ */}
+            <DrAIButton />
         </div>
     );
 }

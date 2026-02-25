@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import DrAIButton from '../components/DrAIButton';
 
 const CREATORS = ['AKASH K.K', 'P. VAIRAVAN', 'S. M. PREETHUKAN'];
 
@@ -308,6 +309,8 @@ export default function Landing() {
                 </div>
                 <p className="text-white/10 text-xs">Built with FastAPI · React · PostgreSQL · Tailwind CSS · ABHA Integration</p>
             </footer>
+            {/* ── Dr AI Floating Button ─ */}
+            <DrAIButton />
         </div>
     );
 }
