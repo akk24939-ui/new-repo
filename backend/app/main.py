@@ -9,7 +9,7 @@ import os
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import auth, hospitals, users, patients, suggestions, prescriptions, reports, staff, vitals, patient_portal, patient_records
+from app.routers import auth, hospitals, users, patients, suggestions, prescriptions, reports, staff, vitals, patient_portal, patient_records, medical_records
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
@@ -57,6 +57,7 @@ app.include_router(staff.router)
 app.include_router(vitals.router)
 app.include_router(patient_portal.router)
 app.include_router(patient_records.router)
+app.include_router(medical_records.router)
 
 
 @app.get("/health", tags=["Health"])

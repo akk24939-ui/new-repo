@@ -388,6 +388,100 @@ function ReportSection({ patientId }) {
     );
 }
 
+// ── UMAVS Doctor Medical Record ──────────────────────────
+function DoctorMedicalRecord({ patient }) {
+    const CATS = ['Lab Report', 'Prescription', 'Radiology', 'Emergency'];
+    const [form, setForm] = useState({ sugar_level: '', blood_pressure: '', diagnosis: '', suggestion: '', file_category: 'Prescription' });
+    const [file, setFile] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [savedCount, setSavedCount] = useState(0);
+
+    const save = async () => {
+        if (!form.sugar_level && !form.blood_pressure && !form.diagnosis && !file)
+            return toast.error('Enter at least one field or attach a file');
+        setSaving(true);
+        try {
+            const fd = new FormData();
+            fd.append('patient_id', patient.id);
+            fd.append('patient_source', patient.source);
+            fd.append('sugar_level', form.sugar_level || '');
+            fd.append('blood_pressure', form.blood_pressure || '');
+            fd.append('diagnosis', form.diagnosis || '');
+            fd.append('suggestion', form.suggestion || '');
+            fd.append('file_category', form.file_category);
+            if (file) fd.append('file', file);
+            await api.post('/medical-records/upload-record', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+            toast.success('✅ Record saved — patient can now view this in their timeline');
+            setForm({ sugar_level: '', blood_pressure: '', diagnosis: '', suggestion: '', file_category: 'Prescription' });
+            setFile(null);
+            setSavedCount(c => c + 1);
+        } catch (err) { toast.error(err.response?.data?.detail || 'Save failed'); }
+        finally { setSaving(false); }
+    };
+
+    return (
+        <div className="glass-card rounded-2xl p-5 flex flex-col gap-4 md:col-span-2 border border-indigo-500/20 bg-indigo-500/5">
+            <div className="flex items-center justify-between">
+                <h3 className="text-white font-bold flex items-center gap-2">
+                    📋 <span>Save Full Medical Record</span>
+                    <span className="text-xs font-normal text-indigo-300/40 ml-1">(appears in Patient Timeline)</span>
+                </h3>
+                {savedCount > 0 && <span className="text-indigo-300/60 text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20">✅ {savedCount} saved</span>}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label className="text-white/40 text-xs mb-1.5 block">🩸 Sugar Level</label>
+                    <div className="relative">
+                        <input className="glass-input text-sm pr-14" placeholder="e.g. 110"
+                            value={form.sugar_level} onChange={e => setForm({ ...form, sugar_level: e.target.value })} />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/20 text-xs">mg/dL</span>
+                    </div>
+                </div>
+                <div>
+                    <label className="text-white/40 text-xs mb-1.5 block">💓 Blood Pressure</label>
+                    <div className="relative">
+                        <input className="glass-input text-sm pr-14" placeholder="e.g. 120/80"
+                            value={form.blood_pressure} onChange={e => setForm({ ...form, blood_pressure: e.target.value })} />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/20 text-xs">mmHg</span>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label className="text-white/40 text-xs mb-1.5 block">📋 Diagnosis</label>
+                <textarea value={form.diagnosis} onChange={e => setForm({ ...form, diagnosis: e.target.value })}
+                    className="glass-input resize-none h-20 text-sm w-full" placeholder="Clinical diagnosis, observations..." />
+            </div>
+
+            <div>
+                <label className="text-white/40 text-xs mb-1.5 block">💡 Suggestion / Treatment Plan</label>
+                <textarea value={form.suggestion} onChange={e => setForm({ ...form, suggestion: e.target.value })}
+                    className="glass-input resize-none h-16 text-sm w-full" placeholder="Prescriptions, lifestyle advice, follow-up..." />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 items-end">
+                <div>
+                    <label className="text-white/40 text-xs mb-1.5 block">📁 File Category</label>
+                    <select className="glass-input text-sm" value={form.file_category}
+                        onChange={e => setForm({ ...form, file_category: e.target.value })}>
+                        {CATS.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                </div>
+                <label className="border-2 border-dashed border-white/10 rounded-xl p-3 text-center cursor-pointer hover:border-indigo-500/40 transition-all">
+                    <input type="file" className="hidden" onChange={e => setFile(e.target.files[0])} accept=".pdf,.jpg,.jpeg,.png" />
+                    {file ? <p className="text-white text-xs">📎 {file.name}</p> : <p className="text-white/30 text-xs">📎 Attach prescription/report</p>}
+                </label>
+            </div>
+
+            <button onClick={save} disabled={saving}
+                className="py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                {saving ? '⏳ Saving...' : '💾 Save to Patient Timeline'}
+            </button>
+        </div>
+    );
+}
+
 // ── Main Doctor Dashboard ─────────────────────────────────
 export default function DoctorDashboard() {
     const { user } = useAuth();
@@ -452,7 +546,10 @@ export default function DoctorDashboard() {
                     <PatientCard patient={patient} />
 
                     <div className="mx-8 mt-6 mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* ── Diagnosis Report (always shown — works for both sources) */}
+                        {/* ── UMAVS Unified Record (all patients, all fields for doctor) */}
+                        <DoctorMedicalRecord patient={patient} />
+
+                        {/* ── Diagnosis Report (always shown) */}
                         <DiagnosisSection patient={patient} />
 
                         {/* ── Extended sections only for doctor-managed patients */}

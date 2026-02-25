@@ -5,7 +5,6 @@ import toast, { Toaster } from 'react-hot-toast';
 
 const API = axios.create({ baseURL: 'http://localhost:8000' });
 
-// ── Health tip of the day ────────────────────────────────
 const TIPS = [
     'Drink at least 8 glasses of water daily.',
     'Walk 30 minutes every day to keep your heart healthy.',
@@ -15,6 +14,138 @@ const TIPS = [
     'Avoid processed food — cook at home more often.',
     'Regular check-ups can catch diseases early.',
 ];
+
+// ── Helper Colors ─────────────────────────────────────────
+const bpColor = bp => {
+    if (!bp) return 'text-white/60';
+    const sys = parseInt(bp.split('/')[0]);
+    if (sys > 140) return 'text-red-400';
+    if (sys > 120) return 'text-yellow-400';
+    return 'text-emerald-400';
+};
+const sugarColor = s => {
+    if (!s) return 'text-white/60';
+    const val = parseInt(s);
+    if (val > 200) return 'text-red-400';
+    if (val > 140) return 'text-yellow-400';
+    return 'text-emerald-400';
+};
+
+// ── Medical History Timeline ──────────────────────────────
+function MedicalTimeline({ patientId, token }) {
+    const [records, setRecords] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        API.get(`/medical-records/patient-records/registered/${patientId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        }).then(res => { setRecords(res.data); setLoading(false); })
+            .catch(() => setLoading(false));
+    }, [patientId, token]);
+
+    const downloadFile = (id, fname) => {
+        const url = `http://localhost:8000/medical-records/download/${id}`;
+        const a = document.createElement('a');
+        a.href = url; a.download = fname; a.click();
+        toast.success(`Downloading ${fname}`);
+    };
+
+    if (loading) return (
+        <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-6">
+            <div className="text-white/30 text-sm text-center">Loading medical history...</div>
+        </div>
+    );
+
+    return (
+        <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-6 md:col-span-2">
+            <div className="flex items-center justify-between mb-5">
+                <h3 className="text-white font-bold text-base flex items-center gap-2">
+                    📅 Medical History Timeline
+                </h3>
+                <span className="text-white/30 text-xs">{records.length} records</span>
+            </div>
+
+            {records.length === 0 ? (
+                <div className="text-center py-10">
+                    <div className="text-4xl mb-3">🩺</div>
+                    <p className="text-white/30 text-sm">No medical records yet.</p>
+                    <p className="text-white/20 text-xs mt-1">Your doctor or nurse will upload records here after your visit.</p>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    {records.map((r, i) => (
+                        <div key={r.id} className={`relative pl-6 ${i < records.length - 1 ? 'pb-4 border-l border-white/10' : ''}`}>
+                            {/* Timeline dot */}
+                            <div className={`absolute left-0 top-1.5 w-3 h-3 rounded-full -translate-x-1.5 border-2 ${r.uploaded_by_role === 'doctor' ? 'bg-blue-500 border-blue-400' : 'bg-emerald-500 border-emerald-400'}`} />
+
+                            <div className={`rounded-2xl p-4 border ${r.uploaded_by_role === 'doctor' ? 'bg-blue-500/5 border-blue-500/15' : 'bg-emerald-500/5 border-emerald-500/15'}`}>
+                                {/* Header row */}
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${r.uploaded_by_role === 'doctor' ? 'bg-blue-500/20 text-blue-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                                            {r.uploaded_by_role === 'doctor' ? '🩺 Doctor' : '👩‍⚕️ Staff'}
+                                        </span>
+                                        {r.uploader_name && (
+                                            <span className="text-white/30 text-xs">{r.uploader_name}</span>
+                                        )}
+                                        {r.file_category && (
+                                            <span className="text-white/20 text-xs px-2 py-0.5 bg-white/5 rounded-full">{r.file_category}</span>
+                                        )}
+                                    </div>
+                                    <span className="text-white/25 text-xs">
+                                        {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                </div>
+
+                                {/* Vitals row */}
+                                {(r.sugar_level || r.blood_pressure) && (
+                                    <div className="flex items-center gap-4 mb-3 bg-white/5 rounded-xl px-3 py-2">
+                                        {r.sugar_level && (
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-white/40 text-xs">🩸 Sugar</span>
+                                                <span className={`text-xs font-bold ${sugarColor(r.sugar_level)}`}>{r.sugar_level} mg/dL</span>
+                                            </div>
+                                        )}
+                                        {r.blood_pressure && (
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-white/40 text-xs">💓 BP</span>
+                                                <span className={`text-xs font-bold ${bpColor(r.blood_pressure)}`}>{r.blood_pressure}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Diagnosis + Suggestion (doctor only) */}
+                                {r.diagnosis && (
+                                    <div className="mb-2">
+                                        <p className="text-blue-400/60 text-xs mb-0.5">Diagnosis</p>
+                                        <p className="text-white text-sm">{r.diagnosis}</p>
+                                    </div>
+                                )}
+                                {r.suggestion && (
+                                    <div className="mb-2">
+                                        <p className="text-indigo-400/60 text-xs mb-0.5">Doctor's Suggestion</p>
+                                        <p className="text-white/80 text-sm">{r.suggestion}</p>
+                                    </div>
+                                )}
+
+                                {/* File download */}
+                                {r.file_name && (
+                                    <button onClick={() => downloadFile(r.id, r.file_name)}
+                                        className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all group">
+                                        <span>{r.file_name.endsWith('.pdf') ? '📄' : '🖼️'}</span>
+                                        <span className="text-white/60 group-hover:text-white text-xs transition-colors truncate max-w-[180px]">{r.file_name}</span>
+                                        <span className="text-white/20 group-hover:text-white/50 text-xs ml-auto transition-colors">⬇ Download</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 // ── Profile Card ─────────────────────────────────────────
 function ProfileCard({ patient }) {
@@ -53,9 +184,7 @@ function ProfileCard({ patient }) {
 function MedicalCard({ patient }) {
     return (
         <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-6 shadow-2xl">
-            <h3 className="text-white font-bold text-base mb-4 flex items-center gap-2">
-                📋 Medical Information
-            </h3>
+            <h3 className="text-white font-bold text-base mb-4 flex items-center gap-2">📋 Medical Information</h3>
             <div className="space-y-3">
                 <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4">
                     <p className="text-orange-400/70 text-xs mb-1">⚠️ Known Allergies</p>
@@ -70,13 +199,11 @@ function MedicalCard({ patient }) {
     );
 }
 
-// ── ABHA Info Card ───────────────────────────────────────
+// ── ABHA Card ────────────────────────────────────────────
 function AbhaCard({ patient }) {
     return (
         <div className="backdrop-blur-xl bg-white/10 border border-blue-500/20 rounded-3xl p-6 shadow-2xl">
-            <h3 className="text-white font-bold text-base mb-4 flex items-center gap-2">
-                🆔 Your ABHA Digital Health Card
-            </h3>
+            <h3 className="text-white font-bold text-base mb-4 flex items-center gap-2">🆔 ABHA Digital Health Card</h3>
             <div className="bg-gradient-to-r from-blue-900/50 to-indigo-900/50 rounded-2xl p-5 border border-blue-500/20">
                 <div className="flex items-center justify-between mb-4">
                     <div>
@@ -146,17 +273,18 @@ export default function PatientDashboard() {
     const navigate = useNavigate();
     const [patient, setPatient] = useState(null);
     const [fullProfile, setFullProfile] = useState(null);
+    const [token, setToken] = useState(null);
     const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     useEffect(() => {
-        const token = localStorage.getItem('pt_token');
+        const t = localStorage.getItem('pt_token');
         const user = JSON.parse(localStorage.getItem('pt_user') || 'null');
-        if (!token || !user) { navigate('/patient-login'); return; }
+        if (!t || !user) { navigate('/patient-login'); return; }
         setPatient(user);
+        setToken(t);
 
-        // Fetch full profile
         API.get(`/patient/profile/${user.id}`, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${t}` }
         }).then(res => setFullProfile(res.data)).catch(() => { });
     }, [navigate]);
 
@@ -179,7 +307,6 @@ export default function PatientDashboard() {
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-950">
             <Toaster position="top-right" toastOptions={{ style: { background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' } }} />
 
-            {/* Glow orbs */}
             <div className="fixed top-[-200px] left-[-200px] w-[600px] h-[600px] rounded-full bg-emerald-600/10 blur-[120px] pointer-events-none" />
             <div className="fixed bottom-[-200px] right-[-200px] w-[600px] h-[600px] rounded-full bg-blue-600/10 blur-[120px] pointer-events-none" />
 
@@ -191,7 +318,7 @@ export default function PatientDashboard() {
                     </div>
                     <div>
                         <p className="text-white font-bold text-sm">{patient.name}</p>
-                        <p className="text-emerald-400/50 text-xs">Patient Dashboard</p>
+                        <p className="text-emerald-400/50 text-xs">Patient Dashboard · VitaSage AI</p>
                     </div>
                 </div>
                 <p className="text-white/30 text-xs hidden md:block">{today}</p>
@@ -201,9 +328,7 @@ export default function PatientDashboard() {
                 </button>
             </header>
 
-            {/* Main content */}
             <div className="relative z-10 max-w-5xl mx-auto px-6 py-8">
-
                 {/* Welcome banner */}
                 <div className="mb-6 p-5 rounded-2xl bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border border-emerald-500/20 flex items-center gap-4">
                     <div className="text-3xl">👋</div>
@@ -219,15 +344,17 @@ export default function PatientDashboard() {
 
                 <HealthTip />
 
-                {/* 2-column grid */}
+                {/* Profile + Medical info */}
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <ProfileCard patient={displayData} />
                     <MedicalCard patient={displayData} />
                     <AbhaCard patient={displayData} />
                     <QuickLinks />
+
+                    {/* ── UMAVS Medical History Timeline ─ */}
+                    {token && <MedicalTimeline patientId={patient.id} token={token} />}
                 </div>
 
-                {/* Footer note */}
                 <p className="text-center text-white/15 text-xs mt-10">
                     VitaSage AI Patient Portal · Records encrypted · ABHA-linked · NHA Compliant
                 </p>
