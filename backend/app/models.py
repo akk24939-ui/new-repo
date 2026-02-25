@@ -126,3 +126,20 @@ class PatientVitals(Base):
     created_at    = Column(DateTime, server_default=func.now())
     patient  = relationship("PatientMaster", back_populates="vitals")
     recorder = relationship("User", back_populates="vitals_recorded")
+
+
+class RegisteredPatient(Base):
+    """Self-registered patients who use the Patient Portal (separate from patient_master)."""
+    __tablename__ = "registered_patients"
+    id                = Column(Integer, primary_key=True, index=True)
+    abha_id           = Column(String(12), unique=True, nullable=False, index=True)
+    aadhaar_id        = Column(String(12), unique=True, nullable=False)
+    name              = Column(String(100), nullable=False)
+    phone             = Column(String(15), nullable=False)
+    blood_group       = Column(String(5))
+    allergies         = Column(Text)
+    medical_notes     = Column(Text)
+    emergency_contact = Column(String(15))
+    password_hash     = Column(Text, nullable=False)
+    created_at        = Column(DateTime, server_default=func.now())
+

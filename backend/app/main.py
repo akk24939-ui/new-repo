@@ -9,7 +9,7 @@ import os
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import auth, hospitals, users, patients, suggestions, prescriptions, reports, staff, vitals
+from app.routers import auth, hospitals, users, patients, suggestions, prescriptions, reports, staff, vitals, patient_portal, patient_records
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
@@ -26,8 +26,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="VitaSage AI",
-    description="Hospital Management SaaS — Auth + Doctor Portal + Staff Portal",
-    version="3.0.0",
+    description="Hospital Management SaaS — Auth + Doctor Portal + Staff Portal + Patient Portal",
+    version="4.0.0",
     lifespan=lifespan,
 )
 
@@ -55,6 +55,8 @@ app.include_router(prescriptions.router)
 app.include_router(reports.router)
 app.include_router(staff.router)
 app.include_router(vitals.router)
+app.include_router(patient_portal.router)
+app.include_router(patient_records.router)
 
 
 @app.get("/health", tags=["Health"])

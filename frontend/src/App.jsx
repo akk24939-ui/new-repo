@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import PatientLogin from './pages/PatientLogin';
+import PatientDashboard from './pages/PatientDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import DoctorDashboard from './pages/DoctorDashboard';
 import StaffDashboard from './pages/StaffDashboard';
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/hospital-login" element={<Login />} />
           <Route path="/patient-login" element={<PatientLogin />} />
+          <Route path="/patient-dashboard" element={<PatientDashboard />} />
 
           {/* Role dashboards */}
           <Route path="/admin" element={
