@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
@@ -254,6 +254,137 @@ function VitalsSection({ patientId }) {
     );
 }
 
+// ── CMMS: Staff View - Collaborative Timeline (View Only) ──
+function StaffCollaborativeTimeline({ patient }) {
+    const [records, setRecords] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState('all');
+
+    const load = useCallback(async () => {
+        if (!patient) return;
+        setLoading(true);
+        try {
+            const res = await api.get(`/medical-records/patient-records/${patient.source}/${patient.id}`);
+            setRecords(res.data);
+        } catch { }
+        finally { setLoading(false); }
+    }, [patient]);
+
+    useState(() => { load(); }, []);
+
+    const filtered = filter === 'all' ? records : records.filter(r => r.uploaded_by_role === filter);
+
+    const bpColor = bp => {
+        if (!bp) return 'text-white/50';
+        const s = parseInt(bp.split('/')[0]);
+        return s > 140 ? 'text-red-400' : s > 120 ? 'text-yellow-400' : 'text-emerald-400';
+    };
+    const sugarColor = s => {
+        if (!s) return 'text-white/50';
+        const v = parseInt(s);
+        return v > 200 ? 'text-red-400' : v > 140 ? 'text-yellow-400' : 'text-emerald-400';
+    };
+    const downloadFile = async (id, fname) => {
+        try {
+            const res = await api.get(`/medical-records/download/${id}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(res.data);
+            const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
+            URL.revokeObjectURL(url);
+        } catch { toast.error('Download failed'); }
+    };
+
+    return (
+        <div className="mx-8 mb-10">
+            <div className="glass-card rounded-2xl p-6 border border-emerald-500/10">
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                    <div>
+                        <h3 className="text-white font-bold text-base flex items-center gap-2">
+                            📅 Full Medical Timeline
+                            <span className="text-xs font-normal text-white/30 px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400/60">View Only</span>
+                        </h3>
+                        <p className="text-white/30 text-xs mt-0.5">
+                            All records from all doctors and staff — {records.length} total. You cannot edit doctor entries.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={load} className="text-white/30 hover:text-white/60 text-xs px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 transition-all">🔄</button>
+                        {['all', 'doctor', 'staff'].map(f => (
+                            <button key={f} onClick={() => setFilter(f)}
+                                className={`text-xs px-3 py-1.5 rounded-xl transition-all capitalize font-medium ${filter === f
+                                    ? f === 'doctor' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                        : f === 'staff' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                            : 'bg-white/15 text-white border border-white/20'
+                                    : 'bg-white/5 text-white/40 border border-white/5 hover:bg-white/10'}`}>
+                                {f === 'all' ? `All (${records.length})` : f === 'doctor' ? `🩺 Dr (${records.filter(r => r.uploaded_by_role === 'doctor').length})` : `👩‍⚕️ Staff (${records.filter(r => r.uploaded_by_role === 'staff').length})`}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {loading ? (
+                    <div className="text-white/30 text-sm text-center py-8">Loading records...</div>
+                ) : filtered.length === 0 ? (
+                    <div className="text-center py-10">
+                        <div className="text-4xl mb-3">🗂️</div>
+                        <p className="text-white/30 text-sm">No records yet. Upload one above!</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {filtered.map((r, i) => {
+                            const isDoc = r.uploaded_by_role === 'doctor' || r.uploaded_by_role === 'admin';
+                            return (
+                                <div key={r.id} className={`relative pl-5 ${i < filtered.length - 1 ? 'pb-4 border-l' : ''} ${isDoc ? 'border-blue-500/20' : 'border-emerald-500/20'}`}>
+                                    <div className={`absolute left-0 top-2 w-3 h-3 rounded-full -translate-x-1.5 border-2 ${isDoc ? 'bg-blue-500 border-blue-400' : 'bg-emerald-500 border-emerald-400'}`} />
+                                    <div className={`rounded-2xl p-4 border ${isDoc ? 'bg-blue-500/5 border-blue-500/15' : 'bg-emerald-500/5 border-emerald-500/15'}`}>
+                                        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${isDoc ? 'bg-blue-500/20 text-blue-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                                                    {isDoc ? '🩺 Doctor' : '👩‍⚕️ Staff'}
+                                                </span>
+                                                {r.uploader_name && <span className="text-white/50 text-xs font-medium">{r.uploader_name}</span>}
+                                                {r.file_category && <span className="text-white/20 text-xs px-2 py-0.5 bg-white/5 rounded-full">{r.file_category}</span>}
+                                            </div>
+                                            <span className="text-white/25 text-xs">
+                                                {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                            </span>
+                                        </div>
+                                        {(r.sugar_level || r.blood_pressure) && (
+                                            <div className="flex items-center gap-4 mb-3 bg-white/5 rounded-xl px-3 py-2">
+                                                {r.sugar_level && <div className="flex items-center gap-1.5"><span className="text-white/30 text-xs">🩸</span><span className={`text-xs font-bold ${sugarColor(r.sugar_level)}`}>{r.sugar_level} mg/dL</span></div>}
+                                                {r.blood_pressure && <div className="flex items-center gap-1.5"><span className="text-white/30 text-xs">💓</span><span className={`text-xs font-bold ${bpColor(r.blood_pressure)}`}>{r.blood_pressure}</span></div>}
+                                            </div>
+                                        )}
+                                        {r.diagnosis && (
+                                            <div className="mb-2">
+                                                <p className="text-blue-400/50 text-xs mb-0.5">📋 Doctor Diagnosis</p>
+                                                <p className="text-white text-sm">{r.diagnosis}</p>
+                                            </div>
+                                        )}
+                                        {r.suggestion && (
+                                            <div className="mb-2">
+                                                <p className="text-indigo-400/50 text-xs mb-0.5">💡 Doctor's Suggestion</p>
+                                                <p className="text-white/80 text-sm">{r.suggestion}</p>
+                                            </div>
+                                        )}
+                                        {r.file_name && (
+                                            <button onClick={() => downloadFile(r.id, r.file_name)}
+                                                className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/25 transition-all group text-left w-full">
+                                                <span>{r.file_name?.endsWith?.('.pdf') ? '📄' : '🖼️'}</span>
+                                                <span className="text-white/50 group-hover:text-white text-xs transition-colors truncate flex-1">{r.file_name}</span>
+                                                <span className="text-white/20 group-hover:text-emerald-400 text-xs transition-colors">⬇ Download</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ── Main Staff Dashboard ──────────────────────────────────
 export default function StaffDashboard() {
     const { user } = useAuth();
@@ -309,12 +440,14 @@ export default function StaffDashboard() {
             {patient && (
                 <>
                     <PatientSummaryCard patient={patient} />
-                    <div className="mx-8 mt-6 mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="mx-8 mt-6 mb-2 grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* UMAVS unified record (always) */}
                         <StaffMedicalUpload patient={patient} />
                         {/* Legacy vitals for master patients */}
                         {isMaster && <VitalsSection patientId={patient.id} />}
                     </div>
+                    {/* CMMS: Staff sees ALL records (doctor + other staff) in view-only timeline */}
+                    <StaffCollaborativeTimeline patient={patient} />
                 </>
             )}
 

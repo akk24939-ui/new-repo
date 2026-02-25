@@ -388,6 +388,205 @@ function ReportSection({ patientId }) {
     );
 }
 
+// ── CMMS: Collaborative Medical Timeline ─────────────────
+// Shows ALL records (from all doctors + staff) for the patient.
+// Used by both Doctor Dashboard and Staff Dashboard.
+function CollaborativeTimeline({ patient, readOnly = false }) {
+    const [records, setRecords] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState('all'); // all | doctor | staff
+    const [refreshKey, setRefreshKey] = useState(0);
+
+    const load = useCallback(async () => {
+        if (!patient) return;
+        setLoading(true);
+        try {
+            const res = await api.get(`/medical-records/patient-records/${patient.source}/${patient.id}`);
+            setRecords(res.data);
+        } catch { }
+        finally { setLoading(false); }
+    }, [patient]);
+
+    useState(() => { load(); }, []);
+
+    // Allow external refresh trigger
+    const refresh = () => setRefreshKey(k => k + 1);
+    useState(() => { load(); }, [refreshKey]);
+
+    const filtered = filter === 'all' ? records
+        : records.filter(r => r.uploaded_by_role === filter);
+
+    // Mini health trend: last 6 sugar readings
+    const sugarTrend = records
+        .filter(r => r.sugar_level && !isNaN(parseInt(r.sugar_level)))
+        .slice(0, 6).reverse();
+    const maxSugar = Math.max(...sugarTrend.map(r => parseInt(r.sugar_level)), 200);
+
+    const bpColor = bp => {
+        if (!bp) return 'text-white/50';
+        const s = parseInt(bp.split('/')[0]);
+        return s > 140 ? 'text-red-400' : s > 120 ? 'text-yellow-400' : 'text-emerald-400';
+    };
+    const sugarColor = s => {
+        if (!s) return 'text-white/50';
+        const v = parseInt(s);
+        return v > 200 ? 'text-red-400' : v > 140 ? 'text-yellow-400' : 'text-emerald-400';
+    };
+
+    const downloadFile = async (id, fname) => {
+        try {
+            const res = await api.get(`/medical-records/download/${id}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(res.data);
+            const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
+            URL.revokeObjectURL(url);
+        } catch { toast.error('Download failed'); }
+    };
+
+    return (
+        <div className="mx-8 mb-10">
+            <div className="glass-card rounded-2xl p-6">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                    <div>
+                        <h3 className="text-white font-bold text-base flex items-center gap-2">
+                            📅 Collaborative Medical Timeline
+                            {readOnly && <span className="text-xs text-white/30 font-normal">(View Only)</span>}
+                        </h3>
+                        <p className="text-white/30 text-xs mt-0.5">
+                            All records from all doctors and staff — {records.length} total
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={load} className="text-white/30 hover:text-white/60 text-xs px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 transition-all">
+                            🔄 Refresh
+                        </button>
+                        {['all', 'doctor', 'staff'].map(f => (
+                            <button key={f} onClick={() => setFilter(f)}
+                                className={`text-xs px-3 py-1.5 rounded-xl transition-all capitalize font-medium ${filter === f
+                                    ? f === 'doctor' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                        : f === 'staff' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                            : 'bg-white/15 text-white border border-white/20'
+                                    : 'bg-white/5 text-white/40 border border-white/5 hover:bg-white/10'}`}>
+                                {f === 'all' ? `All (${records.length})` : f === 'doctor' ? `🩺 Doctor (${records.filter(r => r.uploaded_by_role === 'doctor' || r.uploaded_by_role === 'admin').length})` : `👩‍⚕️ Staff (${records.filter(r => r.uploaded_by_role === 'staff').length})`}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Health Trend Mini Chart */}
+                {sugarTrend.length > 1 && (
+                    <div className="mb-5 bg-white/5 rounded-xl p-4 border border-white/5">
+                        <p className="text-white/40 text-xs mb-3 font-semibold uppercase tracking-wide">🩸 Sugar Level Trend</p>
+                        <div className="flex items-end gap-1.5 h-16">
+                            {sugarTrend.map((r, i) => {
+                                const val = parseInt(r.sugar_level);
+                                const pct = (val / maxSugar) * 100;
+                                const col = val > 200 ? 'bg-red-500' : val > 140 ? 'bg-yellow-400' : 'bg-emerald-500';
+                                return (
+                                    <div key={r.id} className="flex flex-col items-center gap-1 flex-1">
+                                        <span className="text-white/30 text-xs">{val}</span>
+                                        <div className={`w-full rounded-t-md ${col} opacity-80 transition-all`} style={{ height: `${pct}%`, minHeight: '4px' }} />
+                                        <span className="text-white/20 text-xs truncate w-full text-center">
+                                            {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Timeline */}
+                {loading ? (
+                    <div className="text-white/30 text-sm text-center py-8">Loading records...</div>
+                ) : filtered.length === 0 ? (
+                    <div className="text-center py-10">
+                        <div className="text-4xl mb-3">🗂️</div>
+                        <p className="text-white/30 text-sm">No {filter !== 'all' ? filter + ' ' : ''}records found for this patient.</p>
+                        <p className="text-white/20 text-xs mt-1">Records uploaded by doctors and staff will appear here.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {filtered.map((r, i) => {
+                            const isDoc = r.uploaded_by_role === 'doctor' || r.uploaded_by_role === 'admin';
+                            return (
+                                <div key={r.id} className={`relative pl-5 ${i < filtered.length - 1 ? 'pb-4 border-l' : ''} ${isDoc ? 'border-blue-500/20' : 'border-emerald-500/20'}`}>
+                                    {/* Dot */}
+                                    <div className={`absolute left-0 top-2 w-3 h-3 rounded-full -translate-x-1.5 border-2 ${isDoc ? 'bg-blue-500 border-blue-400' : 'bg-emerald-500 border-emerald-400'}`} />
+
+                                    <div className={`rounded-2xl p-4 border ${isDoc ? 'bg-blue-500/5 border-blue-500/15' : 'bg-emerald-500/5 border-emerald-500/15'}`}>
+                                        {/* Row 1: Role badge + uploader + date */}
+                                        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${isDoc ? 'bg-blue-500/20 text-blue-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                                                    {isDoc ? '🩺 Doctor' : '👩‍⚕️ Staff'}
+                                                </span>
+                                                {r.uploader_name && (
+                                                    <span className="text-white/50 text-xs font-medium">{r.uploader_name}</span>
+                                                )}
+                                                {r.file_category && (
+                                                    <span className="text-white/20 text-xs px-2 py-0.5 bg-white/5 rounded-full border border-white/5">{r.file_category}</span>
+                                                )}
+                                            </div>
+                                            <span className="text-white/25 text-xs">
+                                                {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+
+                                        {/* Vitals */}
+                                        {(r.sugar_level || r.blood_pressure) && (
+                                            <div className="flex items-center gap-4 mb-3 bg-white/5 rounded-xl px-3 py-2 border border-white/5">
+                                                {r.sugar_level && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-white/30 text-xs">🩸 Sugar</span>
+                                                        <span className={`text-xs font-bold ${sugarColor(r.sugar_level)}`}>{r.sugar_level} mg/dL</span>
+                                                    </div>
+                                                )}
+                                                {r.blood_pressure && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-white/30 text-xs">💓 BP</span>
+                                                        <span className={`text-xs font-bold ${bpColor(r.blood_pressure)}`}>{r.blood_pressure} mmHg</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Diagnosis */}
+                                        {r.diagnosis && (
+                                            <div className="mb-2">
+                                                <p className="text-blue-400/60 text-xs mb-0.5">📋 Diagnosis</p>
+                                                <p className="text-white text-sm">{r.diagnosis}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Suggestion */}
+                                        {r.suggestion && (
+                                            <div className="mb-2">
+                                                <p className="text-indigo-400/60 text-xs mb-0.5">💡 Suggestion</p>
+                                                <p className="text-white/80 text-sm">{r.suggestion}</p>
+                                            </div>
+                                        )}
+
+                                        {/* File download */}
+                                        {r.file_name && (
+                                            <button onClick={() => downloadFile(r.id, r.file_name)}
+                                                className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/25 transition-all group text-left w-full">
+                                                <span>{r.file_name?.endsWith?.('.pdf') ? '📄' : '🖼️'}</span>
+                                                <span className="text-white/50 group-hover:text-white text-xs transition-colors truncate flex-1">{r.file_name}</span>
+                                                <span className="text-white/20 group-hover:text-emerald-400 text-xs transition-colors">⬇ Download</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ── UMAVS Doctor Medical Record ──────────────────────────
 function DoctorMedicalRecord({ patient }) {
     const CATS = ['Lab Report', 'Prescription', 'Radiology', 'Emergency'];
@@ -545,7 +744,7 @@ export default function DoctorDashboard() {
                     {isMaster && patient.risk_level === 'High' && <EmergencyBanner patientName={patient.name} />}
                     <PatientCard patient={patient} />
 
-                    <div className="mx-8 mt-6 mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="mx-8 mt-6 mb-2 grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* ── UMAVS Unified Record (all patients, all fields for doctor) */}
                         <DoctorMedicalRecord patient={patient} />
 
@@ -570,6 +769,9 @@ export default function DoctorDashboard() {
                             </div>
                         )}
                     </div>
+
+                    {/* ── CMMS Collaborative Timeline (full width, below grid) ── */}
+                    <CollaborativeTimeline patient={patient} />
                 </>
             )}
 
