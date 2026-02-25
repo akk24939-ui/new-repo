@@ -9,7 +9,7 @@ import os
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import auth, hospitals, users, patients, suggestions, prescriptions, reports, staff, vitals, patient_portal, patient_records, medical_records
+from app.routers import auth, hospitals, users, patients, suggestions, prescriptions, reports, staff, vitals, patient_portal, patient_records, medical_records, staff_records
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="VitaSage AI",
     description="Hospital Management SaaS — Auth + Doctor Portal + Staff Portal + Patient Portal",
-    version="4.0.0",
+    version="6.0.0",
     lifespan=lifespan,
 )
 
@@ -58,6 +58,7 @@ app.include_router(vitals.router)
 app.include_router(patient_portal.router)
 app.include_router(patient_records.router)
 app.include_router(medical_records.router)
+app.include_router(staff_records.router)  # SCAM - Staff Controlled Access Module
 
 
 @app.get("/health", tags=["Health"])
