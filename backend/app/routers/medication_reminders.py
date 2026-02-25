@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.database import get_db
-from app.dependencies import require_doctor, require_staff, get_current_user
 
 router = APIRouter(prefix="/meds", tags=["Module 5 - Medication Reminders"])
 
@@ -235,7 +234,6 @@ async def mark_missed(
 async def get_adherence(
     patient_source: str,
     patient_id: int,
-    current_user=Depends(require_staff),   # Doctor or Staff can view
     db: AsyncSession = Depends(get_db),
 ):
     """Returns per-reminder adherence summary for a patient."""

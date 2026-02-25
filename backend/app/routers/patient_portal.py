@@ -12,7 +12,7 @@ from app.models import RegisteredPatient
 from app.config import settings
 
 router = APIRouter(prefix="/patient", tags=["Patient Portal"])
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=4)
 
 
 # ── Schemas ───────────────────────────────────────────────

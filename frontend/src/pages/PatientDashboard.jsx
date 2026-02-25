@@ -635,22 +635,27 @@ function QuickLinks() {
 // ── Main Dashboard ───────────────────────────────────────
 export default function PatientDashboard() {
     const navigate = useNavigate();
-    const [patient, setPatient] = useState(null);
     const [fullProfile, setFullProfile] = useState(null);
-    const [token, setToken] = useState(null);
+
+    // ── Read from localStorage SYNCHRONOUSLY — instant render, no black flash ──
+    const [patient] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('pt_user') || 'null'); } catch { return null; }
+    });
+    const [token] = useState(() => localStorage.getItem('pt_token'));
     const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
+    // Redirect if not logged in
     useEffect(() => {
-        const t = localStorage.getItem('pt_token');
-        const user = JSON.parse(localStorage.getItem('pt_user') || 'null');
-        if (!t || !user) { navigate('/patient-login'); return; }
-        setPatient(user);
-        setToken(t);
+        if (!token || !patient) { navigate('/patient-login'); }
+    }, [token, patient, navigate]);
 
-        API.get(`/patient/profile/${user.id}`, {
-            headers: { Authorization: `Bearer ${t}` }
+    // Fetch full profile in background (non-blocking)
+    useEffect(() => {
+        if (!token || !patient) return;
+        API.get(`/patient/profile/${patient.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
         }).then(res => setFullProfile(res.data)).catch(() => { });
-    }, [navigate]);
+    }, [token, patient?.id]);
 
     const logout = () => {
         localStorage.removeItem('pt_token');
@@ -659,13 +664,15 @@ export default function PatientDashboard() {
         toast.success('Logged out');
     };
 
-    if (!patient) return (
+    // Show redirect screen only if truly no data
+    if (!patient || !token) return (
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-950 flex items-center justify-center">
-            <div className="text-white text-xl">Loading...</div>
+            <div className="text-white/40 text-sm">Redirecting...</div>
         </div>
     );
 
     const displayData = fullProfile || patient;
+
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-950">
