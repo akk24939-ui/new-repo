@@ -51,7 +51,11 @@ async def create_prescription(
     rx_number = f"RX-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
     # Null-safe: fall back to username if full_name not set
     doctor_display = current_user.full_name or current_user.username or "Doctor"
-    digital_sig = f"Dr. {doctor_display}"
+    # Avoid double 'Dr.' prefix if full_name already starts with it
+    if doctor_display.startswith('Dr.'):
+        digital_sig = doctor_display
+    else:
+        digital_sig = f"Dr. {doctor_display}"
 
     import json, traceback
     medicines_json = json.dumps([m.model_dump() for m in payload.medicines])
@@ -64,7 +68,7 @@ async def create_prescription(
                  digital_signature, rx_number)
             VALUES
                 (:pid, :src, :did, :dname,
-                 :diag, :meds::jsonb, :advice, :followup,
+                 :diag, CAST(:meds AS jsonb), :advice, :followup,
                  :sig, :rxn)
         """), {
             "pid":     payload.patient_id,

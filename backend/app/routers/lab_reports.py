@@ -80,7 +80,7 @@ async def upload_lab_report(
              test_name, test_results, remarks, file_name, file_path)
         VALUES
             (:pid, :src, :sid, :sname,
-             :tname, :results::jsonb, :remarks, :fname, :fpath)
+             :tname, CAST(:results AS jsonb), :remarks, :fname, :fpath)
     """), {
         "pid":     patient_id,
         "src":     patient_source,
