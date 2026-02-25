@@ -49,33 +49,41 @@ async def create_prescription(
 
     # Unique prescription number: RX-YYYYMMDD-XXXX
     rx_number = f"RX-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
-    digital_sig = f"Dr. {current_user.full_name}"
+    # Null-safe: fall back to username if full_name not set
+    doctor_display = current_user.full_name or current_user.username or "Doctor"
+    digital_sig = f"Dr. {doctor_display}"
 
-    import json
+    import json, traceback
     medicines_json = json.dumps([m.model_dump() for m in payload.medicines])
 
-    await db.execute(text("""
-        INSERT INTO advanced_prescriptions
-            (patient_id, patient_source, doctor_id, doctor_name,
-             diagnosis, medicines, advice, follow_up_date,
-             digital_signature, rx_number)
-        VALUES
-            (:pid, :src, :did, :dname,
-             :diag, :meds::jsonb, :advice, :followup,
-             :sig, :rxn)
-    """), {
-        "pid":     payload.patient_id,
-        "src":     payload.patient_source,
-        "did":     current_user.id,
-        "dname":   current_user.full_name,
-        "diag":    payload.diagnosis,
-        "meds":    medicines_json,
-        "advice":  payload.advice,
-        "followup": str(payload.follow_up_date) if payload.follow_up_date else None,
-        "sig":     digital_sig,
-        "rxn":     rx_number,
-    })
-    await db.commit()
+    try:
+        await db.execute(text("""
+            INSERT INTO advanced_prescriptions
+                (patient_id, patient_source, doctor_id, doctor_name,
+                 diagnosis, medicines, advice, follow_up_date,
+                 digital_signature, rx_number)
+            VALUES
+                (:pid, :src, :did, :dname,
+                 :diag, :meds::jsonb, :advice, :followup,
+                 :sig, :rxn)
+        """), {
+            "pid":     payload.patient_id,
+            "src":     payload.patient_source,
+            "did":     current_user.id,
+            "dname":   doctor_display,
+            "diag":    payload.diagnosis,
+            "meds":    medicines_json,
+            "advice":  payload.advice,
+            "followup": str(payload.follow_up_date) if payload.follow_up_date else None,
+            "sig":     digital_sig,
+            "rxn":     rx_number,
+        })
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        print(f"[RX ERROR] {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
     return {
         "message": "Prescription generated successfully",
         "rx_number": rx_number,
